@@ -4,7 +4,7 @@ from typing import Optional, List
 
 class LlmEmbeddingService(ABC):
     def __init__(self, dimensions: int):
-        self.__dimensions = dimensions
+        self._dimensions = dimensions
 
     @abstractmethod
     def embed(
