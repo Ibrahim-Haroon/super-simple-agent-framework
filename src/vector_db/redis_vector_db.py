@@ -1,7 +1,8 @@
 import json
 import struct
-from typing import override, Optional, Any
 import redis
+import numpy as np
+from typing import override, Optional, Any
 from redis.commands.search.field import TextField, VectorField
 from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
@@ -23,36 +24,47 @@ class RedisVectorDB(VectorDB):
         self.__index_name = index_name
         self.__vector_dim = vector_dim
         self.__prefix = f"{index_name}:"
-        self.__ensure_index()
+
+    import time
 
     def __ensure_index(self) -> None:
         try:
-            self.__client.ft(self.__index_name).info()
+            self.__client.ft(self.__index_name).dropindex()
         except Exception:
-            schema = (
-                TextField("$.text", as_name="text"),
-                VectorField(
-                    "$.embedding",
-                    "FLAT",
-                    {
-                        "TYPE": "FLOAT32",
-                        "DIM": self.__vector_dim,
-                        "DISTANCE_METRIC": "COSINE",
-                    },
-                    as_name="embedding"
-                ),
-            )
-            self.__client.ft(self.__index_name).create_index(
-                schema,
-                definition=IndexDefinition(
-                    prefix=[self.__prefix],
-                    index_type=IndexType.JSON
-                )
-            )
+            pass
 
-    @staticmethod
-    def __to_float32_bytes(vector: list[float]) -> bytes:
-        return struct.pack(f"{len(vector)}f", *vector)
+        schema = (
+            TextField("$.text", as_name="text"),
+            VectorField(
+                "$.embedding",
+                "FLAT",
+                {
+                    "TYPE": "FLOAT32",
+                    "DIM": self.__vector_dim,
+                    "DISTANCE_METRIC": "COSINE",
+                },
+                as_name="embedding"
+            ),
+        )
+        self.__client.ft(self.__index_name).create_index(
+            schema,
+            definition=IndexDefinition(
+                prefix=[self.__prefix],
+                index_type=IndexType.JSON
+            )
+        )
+        self.__wait_for_indexing()
+
+    def __wait_for_indexing(self, timeout: int = 30) -> None:
+        import time
+        start = time.time()
+        while time.time() - start < timeout:
+            info = self.__client.ft(self.__index_name).info()
+            print(f"indexing={info['indexing']}, num_docs={info['num_docs']}, percent={info.get('percent_indexed')}")
+            if int(info["indexing"]) == 0 and int(info["num_docs"]) > 0:
+                return
+            time.sleep(0.1)
+        raise TimeoutError("Redis Search indexing did not complete in time")
 
     @override
     def add_documents(
@@ -60,15 +72,16 @@ class RedisVectorDB(VectorDB):
             document_ids: list[str],
             documents: list[str],
     ) -> None:
-        embeddings = self.__embedding_service.embed_batch(documents)
-        pipe = self.__client.pipeline()
+        embeddings = self._embedding_service.embed_batch(documents)
+        pipe = self.__client.pipeline(transaction=False)
         for doc_id, text, embedding in zip(document_ids, documents, embeddings):
             key = f"{self.__prefix}{doc_id}"
-            self.__client.json().set(key, "$", {
+            pipe.json().set(key, "$", {
                 "text": text,
                 "embedding": embedding
             })
         pipe.execute()
+        self.__ensure_index()
 
     @override
     def update_documents(
@@ -94,8 +107,8 @@ class RedisVectorDB(VectorDB):
             query: str,
             top_k: Optional[int] = 5,
     ) -> list[Any]:
-        query_vector = self.__embedding_service.embed(query)
-        query_bytes = self.__to_float32_bytes(query_vector)
+        query_vector = self._embedding_service.embed(query)
+        query_vector = np.array(query_vector, dtype=np.float32).tobytes()
 
         q = (
             Query(f"*=>[KNN {top_k} @embedding $vec AS score]")
@@ -105,7 +118,7 @@ class RedisVectorDB(VectorDB):
         )
 
         results = self.__client.ft(self.__index_name).search(
-            q, query_params={"vec": query_bytes}
+            q, query_params={"vec": query_vector}
         )
 
         return [

@@ -5,7 +5,7 @@ from src.llm.service.embedding_service import LlmEmbeddingService
 
 class VectorDB(ABC):
     def __init__(self, embedding_service: LlmEmbeddingService):
-        self.__embedding_service = embedding_service
+        self._embedding_service = embedding_service
 
     @abstractmethod
     def add_documents(
