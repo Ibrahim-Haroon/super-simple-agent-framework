@@ -32,7 +32,7 @@ class OpenAILlmEmbeddingService(LlmEmbeddingService):
         payload = {
             "model": self.__model,
             "input": text,
-            "dimension": self.__dimensions
+            "dimensions": self._dimensions
         }
 
         try:
@@ -58,7 +58,7 @@ class OpenAILlmEmbeddingService(LlmEmbeddingService):
         payload = {
             "model": self.__model,
             "input": texts,
-            "dimension": self.__dimensions
+            "dimensions": self._dimensions
         }
 
         try:
