@@ -45,7 +45,7 @@ class PGVectorDB(VectorDB):
             document_ids: list[str],
             documents: list[str],
     ) -> None:
-        embeddings = self.__embedding_service.embed_batch(documents)
+        embeddings = self._embedding_service.embed_batch(documents)
         with self.__conn.cursor() as cur:
             psycopg2.extras.execute_batch(cur, f"""
                 INSERT INTO {self.__table_name} (id, text, embedding)
@@ -60,7 +60,7 @@ class PGVectorDB(VectorDB):
             document_ids: list[str],
             documents: list[str],
     ) -> None:
-        embeddings = self.__embedding_service.embed_batch(documents)
+        embeddings = self._embedding_service.embed_batch(documents)
         with self.__conn.cursor() as cur:
             psycopg2.extras.execute_batch(cur, f"""
                 UPDATE {self.__table_name}
@@ -87,7 +87,7 @@ class PGVectorDB(VectorDB):
             query: str,
             top_k: Optional[int] = 5,
     ) -> list[Any]:
-        query_vector = self.__embedding_service.embed(query)
+        query_vector = self._embedding_service.embed(query)
         with self.__conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(f"""
                 SELECT id, text, 1 - (embedding <=> %s::vector) AS score
