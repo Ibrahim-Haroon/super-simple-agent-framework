@@ -51,7 +51,7 @@ class RetailAgent(Agent):
             conversation_history=self.__memory.history(self.__conversation_id)
         )
 
-        if response["choices"][0]["finish_reason"] == "tool_calls":
+        while response["choices"][0]["finish_reason"] == "tool_calls":
             tool_calls = response["choices"][0]["message"]["tool_calls"]
 
             self.__memory.add(
@@ -64,42 +64,41 @@ class RetailAgent(Agent):
                         "type": tool_call["type"],
                         "function": {
                             "name": tool_call["function"]["name"],
-                            "arguments": tool_call["function"]["arguments"]
-                        }
-                    } for tool_call in tool_calls]
-                )
+                            "arguments": tool_call["function"]["arguments"],
+                        },
+                    } for tool_call in tool_calls],
+                ),
             )
 
             for tool_call in tool_calls:
                 tool_name = tool_call["function"]["name"]
                 tool_args = json.loads(tool_call["function"]["arguments"])
+                tool_result = (
+                    self._tool_map[tool_name](**tool_args)
+                    if tool_name in self._tool_map
+                    else {"error": f"Unknown tool: {tool_name}"}
+                )
 
-                if tool_name in self._tool_map:
-                    tool_result = self._tool_map[tool_name](**tool_args)
+                self.__memory.add(
+                    self.__conversation_id,
+                    LlmMessage(
+                        role="tool",
+                        content=str(tool_result),
+                        tool_call_id=tool_call["id"],
+                    ),
+                )
 
-                    self.__memory.add(
-                        self.__conversation_id,
-                        LlmMessage(
-                            role="tool",
-                            content=str(tool_result),
-                            tool_call_id=tool_call["id"]
-                        )
-                    )
-
-            final_response = self.__llm_service.response(
+            response = self.__llm_service.response(
                 role=self.role,
-                prompt=None,  # Empty prompt, context is in conversation history
-                tools=self.__tools,
-                conversation_history=self.__memory.history(self.__conversation_id)
+                prompt=None,
+                tools=self.__tools or None,
+                conversation_history=self.__memory.history(self.__conversation_id),
             )
 
-            assistant_message = final_response["choices"][0]["message"]["content"]
-        else:
-            assistant_message = response["choices"][0]["message"]["content"]
-
+        assistant_message = response["choices"][0]["message"]["content"]
         self.__memory.add(
             self.__conversation_id,
-            LlmMessage(role="assistant", content=assistant_message)
+            LlmMessage(role="assistant", content=assistant_message),
         )
 
         return assistant_message
