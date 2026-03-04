@@ -7,7 +7,7 @@ from src.llm.memory.conversation_memory import ConversationMemory
 from src.llm.memory.llm_message import LlmMessage
 from src.llm.service.openai_response_service import OpenAILlmResponseService
 from src.llm.service.response_service import LlmResponseService
-from src.tools.tool_decorator import get_tool_definitions, tool
+from src.tools.decorator import get_tool_definitions, tool
 
 
 class RetailAgent(Agent):
